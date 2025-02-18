@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Voice Chat</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .chat-container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            padding: 20px;
+        }
+        .chat-history {
+            height: 300px;
+            overflow-y: auto;
+            border: 1px solid #eee;
+            padding: 15px;
+            margin-bottom: 20px;
+            border-radius: 5px;
+        }
+        .message {
+            margin-bottom: 10px;
+            padding: 8px 12px;
+            border-radius: 5px;
+        }
+        .user-message {
+            background-color: #e3f2fd;
+            margin-left: 20px;
+        }
+        .system-message {
+            background-color: #f5f5f5;
+            margin-right: 20px;
+        }
+        .input-container {
+            display: flex;
+            gap: 10px;
+        }
+        #messageInput {
+            flex: 1;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-size: 16px;
+        }
+        button {
+            padding: 10px 20px;
+            background-color: #2196f3;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: background-color 0.2s;
+        }
+        button:hover {
+            background-color: #1976d2;
+        }
+        button:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
+        }
+        .controls {
+            display: flex;
+            gap: 10px;
+            margin-top: 10px;
+        }
+        .status {
+            color: #666;
+            font-size: 14px;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="chat-container">
+        <div class="chat-history" id="chatHistory"></div>
+        <div class="input-container">
+            <input type="text" id="messageInput" placeholder="Type your message...">
+            <button id="sendButton" onclick="sendMessage()">Send</button>
+        </div>
+        <div class="controls">
+            <button id="playButton" onclick="playLastResponse()" disabled>Play Response</button>
+            <button id="pauseButton" onclick="pauseAudio()" disabled>Pause</button>
+        </div>
+        <div class="status" id="status"></div>
+    </div>
+
+    <script>
+        let audioContext;
+        let audioBuffer;
+        let audioSource;
+        const API_KEY = 'sk_7c87a8594f39df141cfa55e2be4bf05aa656faab15c8905e';
+        const VOICE_ID = 'bp3IIdB9QdRXw4Bda6hP';
+
+        function updateStatus(message) {
+            document.getElementById('status').textContent = message;
+        }
+
+        function addMessage(text, isUser) {
+            const chatHistory = document.getElementById('chatHistory');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${isUser ? 'user-message' : 'system-message'}`;
+            messageDiv.textContent = text;
+            chatHistory.appendChild(messageDiv);
+            chatHistory.scrollTop = chatHistory.scrollHeight;
+        }
+
+        async function sendMessage() {
+            const messageInput = document.getElementById('messageInput');
+            const message = messageInput.value.trim();
+            
+            if (!message) return;
+            
+            const sendButton = document.getElementById('sendButton');
+            sendButton.disabled = true;
+            
+            try {
+                addMessage(message, true);
+                updateStatus('Generating audio response...');
+
+                const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${VOICE_ID}`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'xi-api-key': API_KEY
+                    },
+                    body: JSON.stringify({
+                        text: message,
+                        model_id: 'eleven_monolingual_v1',
+                        voice_settings: {
+                            stability: 0.5,
+                            similarity_boost: 0.5
+                        }
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error('Failed to generate speech');
+                }
+
+                const audioBlob = await response.blob();
+                const arrayBuffer = await audioBlob.arrayBuffer();
+                
+                if (!audioContext) {
+                    audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                }
+                
+                audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+                
+                document.getElementById('playButton').disabled = false;
+                updateStatus('Response ready to play');
+                
+            } catch (error) {
+                console.error('Error:', error);
+                updateStatus(`Error: ${error.message}`);
+            } finally {
+                messageInput.value = '';
+                sendButton.disabled = false;
+            }
+        }
+
+        function playLastResponse() {
+            if (!audioBuffer || !audioContext) return;
+            
+            if (audioSource) {
+                audioSource.stop();
+            }
+            
+            audioSource = audioContext.createBufferSource();
+            audioSource.buffer = audioBuffer;
+            audioSource.connect(audioContext.destination);
+            audioSource.start(0);
+            
+            document.getElementById('pauseButton').disabled = false;
+            document.getElementById('playButton').disabled = true;
+            
+            audioSource.onended = function() {
+                document.getElementById('pauseButton').disabled = true;
+                document.getElementById('playButton').disabled = false;
+            };
+        }
+
+        function pauseAudio() {
+            if (audioSource) {
+                audioSource.stop();
+                document.getElementById('pauseButton').disabled = true;
+                document.getElementById('playButton').disabled = false;
+            }
+        }
+
+        document.getElementById('messageInput').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                sendMessage();
+            }
+        });
+    </script>
+</body>
+</html>
